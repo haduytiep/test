@@ -2,8 +2,8 @@
 
 import streamlit as st
 import pandas as pd
-from google import genai
-from google.genai.errors import APIError
+from google.generativeai.types import HarmCategory, HarmBlockThreshold
+import google.generativeai as genai
 
 # --- Cấu hình Trang Streamlit ---
 st.set_page_config(
@@ -50,7 +50,13 @@ def get_ai_analysis(data_for_ai, api_key):
     """Gửi dữ liệu phân tích đến Gemini API và nhận nhận xét."""
     try:
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel(model_name='gemini-1.5-flash') 
+        model = genai.GenerativeModel(model_name='gemini-1.5-flash',
+            safety_settings={
+                HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+                HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+                HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
+                HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
+            })
 
         prompt = f"""
         Bạn là một chuyên gia phân tích tài chính chuyên nghiệp. Dựa trên các chỉ số tài chính sau, hãy đưa ra một nhận xét khách quan, ngắn gọn (khoảng 3-4 đoạn) về tình hình tài chính của doanh nghiệp. Đánh giá tập trung vào tốc độ tăng trưởng, thay đổi cơ cấu tài sản và khả năng thanh toán hiện hành.
@@ -62,27 +68,8 @@ def get_ai_analysis(data_for_ai, api_key):
         response = model.generate_content(prompt)
         return response.text
 
-    except APIError as e:
+    except Exception as e:
         return f"Lỗi gọi Gemini API: Vui lòng kiểm tra Khóa API hoặc giới hạn sử dụng. Chi tiết lỗi: {e}"
-    except Exception as e:
-        return f"Đã xảy ra lỗi không xác định: {e}"
-
-# --- Hàm gọi API Gemini cho Chatbot (Chức năng mới) ---
-@st.cache_resource
-def get_gemini_chat_model(api_key):
-    """
-    Tạo và cấu hình mô hình chat Gemini.
-    Sử dụng @st.cache_resource để chỉ chạy 1 lần.
-    """
-    try:
-        genai.configure(api_key=api_key)
-        # Sử dụng gemini-1.5-flash cho tốc độ và chi phí hiệu quả
-        model = genai.GenerativeModel('gemini-1.5-flash', 
-                                    system_instruction="Bạn là một chuyên gia phân tích tài chính và kinh tế. Hãy đưa ra các câu trả lời ngắn gọn, chuyên nghiệp và hữu ích. Tránh lan man.")
-        return model.start_chat(history=[])
-    except Exception as e:
-        st.error(f"Lỗi cấu hình Gemini API: {e}")
-        return None
 
 # --- Thiết lập giao diện Tab ---
 tab1, tab2 = st.tabs(["📊 Phân Tích Báo Cáo Tài Chính", "💬 Chatbot Tài Chính AI"])
@@ -110,9 +97,7 @@ with tab1:
                     'Tỷ trọng Năm sau (%)': '{:.2f}%'
                 }), use_container_width=True)
                 
-                # ... (Các chức năng tính toán chỉ số và nhận xét AI cũ) ...
                 st.subheader("4. Các Chỉ số Tài chính Cơ bản")
-            
                 try:
                     tsnh_n = df_processed[df_processed['Chỉ tiêu'].str.contains('TÀI SẢN NGẮN HẠN', case=False, na=False)]['Năm sau'].iloc[0]
                     tsnh_n_1 = df_processed[df_processed['Chỉ tiêu'].str.contains('TÀI SẢN NGẮN HẠN', case=False, na=False)]['Năm trước'].iloc[0]
@@ -161,35 +146,42 @@ with tab2:
     st.subheader("💬 Chatbot Chuyên gia Tài chính AI")
     st.info("Bạn có thể đặt câu hỏi về các chỉ số tài chính, thuật ngữ kinh tế hoặc các vấn đề liên quan đến phân tích doanh nghiệp.")
     
-    # Lấy API Key và khởi tạo mô hình
+    # Lấy API Key và khởi tạo mô hình chat
     api_key = st.secrets.get("GEMINI_API_KEY") 
+    
     if not api_key:
         st.warning("Vui lòng cấu hình Khóa 'GEMINI_API_KEY' trong Streamlit Secrets để sử dụng chức năng chat.")
     else:
-        # Khởi tạo mô hình chat và lịch sử hội thoại
-        if "chat" not in st.session_state:
-            st.session_state.chat = get_gemini_chat_model(api_key)
-        
-        if st.session_state.chat:
-            # Lưu lịch sử chat
-            if "messages" not in st.session_state:
-                st.session_state.messages = []
+        # Khởi tạo mô hình và lịch sử chat nếu chưa tồn tại
+        if "chat_model" not in st.session_state:
+            try:
+                genai.configure(api_key=api_key)
+                model = genai.GenerativeModel('gemini-1.5-flash', 
+                                            system_instruction="Bạn là một chuyên gia phân tích tài chính và kinh tế. Hãy đưa ra các câu trả lời ngắn gọn, chuyên nghiệp và hữu ích. Tránh lan man.")
+                st.session_state.chat_model = model.start_chat(history=[])
+            except Exception as e:
+                st.error(f"Lỗi cấu hình Gemini API: {e}")
+                st.session_state.chat_model = None
 
-            # Hiển thị lịch sử chat
-            for message in st.session_state.messages:
-                with st.chat_message(message["role"]):
-                    st.markdown(message["content"])
+        if "messages" not in st.session_state:
+            st.session_state.messages = []
 
-            # Xử lý input từ người dùng
-            if prompt := st.chat_input("Hỏi gì đó về tài chính..."):
-                st.session_state.messages.append({"role": "user", "content": prompt})
-                with st.chat_message("user"):
-                    st.markdown(prompt)
+        # Hiển thị lịch sử chat
+        for message in st.session_state.messages:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
 
+        # Xử lý input từ người dùng
+        if prompt := st.chat_input("Hỏi gì đó về tài chính..."):
+            st.session_state.messages.append({"role": "user", "content": prompt})
+            with st.chat_message("user"):
+                st.markdown(prompt)
+
+            if st.session_state.chat_model:
                 with st.chat_message("assistant"):
                     with st.spinner("Đang nghĩ câu trả lời..."):
                         try:
-                            response = st.session_state.chat.send_message(prompt, stream=True)
+                            response = st.session_state.chat_model.send_message(prompt, stream=True)
                             full_response = ""
                             placeholder = st.empty()
                             for chunk in response:
@@ -199,3 +191,5 @@ with tab2:
                             st.session_state.messages.append({"role": "assistant", "content": full_response})
                         except Exception as e:
                             st.error(f"Lỗi khi gửi tin nhắn đến Gemini: {e}")
+            else:
+                st.error("Không thể kết nối đến mô hình chat. Vui lòng kiểm tra lại API Key.")
