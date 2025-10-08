@@ -2,8 +2,8 @@
 
 import streamlit as st
 import pandas as pd
-from google.generativeai.types import HarmCategory, HarmBlockThreshold
 import google.generativeai as genai
+from google.generativeai.types import HarmCategory, HarmBlockThreshold
 
 # --- Cấu hình Trang Streamlit ---
 st.set_page_config(
@@ -50,7 +50,8 @@ def get_ai_analysis(data_for_ai, api_key):
     """Gửi dữ liệu phân tích đến Gemini API và nhận nhận xét."""
     try:
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel(model_name='gemini-1.5-flash',
+        # Sử dụng model gemini-1.0-pro để đảm bảo tính khả dụng
+        model = genai.GenerativeModel(model_name='gemini-1.0-pro',
             safety_settings={
                 HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
                 HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
@@ -156,7 +157,8 @@ with tab2:
         if "chat_model" not in st.session_state:
             try:
                 genai.configure(api_key=api_key)
-                model = genai.GenerativeModel('gemini-1.5-flash', 
+                # Sử dụng model gemini-1.0-pro để đảm bảo tính khả dụng
+                model = genai.GenerativeModel('gemini-1.0-pro', 
                                             system_instruction="Bạn là một chuyên gia phân tích tài chính và kinh tế. Hãy đưa ra các câu trả lời ngắn gọn, chuyên nghiệp và hữu ích. Tránh lan man.")
                 st.session_state.chat_model = model.start_chat(history=[])
             except Exception as e:
